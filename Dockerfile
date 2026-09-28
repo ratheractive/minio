@@ -10,6 +10,10 @@ FROM alpine:3.23
 # and MinIO's own documentation say `mc`, so both names work.
 RUN apk add --no-cache minio minio-client \
  && ln -s mcli /usr/bin/mc
+# mc keeps its aliases in a config directory under $HOME. Run as a uid with no passwd entry - as
+# Kubernetes usually runs this - $HOME is /, and every mc command fails with "mkdir /.mc:
+# permission denied". /tmp is writable for any uid.
+ENV MC_CONFIG_DIR=/tmp/.mc
 EXPOSE 9000 9001
 VOLUME /data
 HEALTHCHECK --interval=30s --timeout=5s CMD wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live || exit 1

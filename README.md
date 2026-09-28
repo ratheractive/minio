@@ -17,13 +17,14 @@ docker run -d -p 9000:9000 -p 9001:9001 -v minio:/data \
   current Go
 - `mc` - Alpine's `minio-client`, installed there as `mcli`; `mc` is a symlink to it
 - the default command is `server /data --console-address :9001`; any `minio` arguments replace it
-- no user is set: run it as whatever owns the data (`securityContext.runAsUser` in Kubernetes)
+- no user is set: run it as whatever owns the data (`securityContext.runAsUser` in Kubernetes).
+  `MC_CONFIG_DIR` is `/tmp/.mc`, so `mc` works for a uid with no home directory
 
 ## Tags
 
 | Tag | Moves? | |
 | --- | --- | --- |
-| `RELEASE.<upstream>-<yyyymmdd>` | never | one build; pin this |
+| `RELEASE.<upstream>-<yyyymmdd>.<run>` | never | one build; pin this |
 | `RELEASE.<upstream>` | weekly | the newest build of that release |
 | `latest` | weekly | the newest build |
 

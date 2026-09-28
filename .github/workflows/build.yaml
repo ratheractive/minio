@@ -27,21 +27,22 @@ jobs:
           mc=$(docker run --rm --entrypoint mc minio:test --version | grep -oE 'RELEASE\.[0-9TZ:-]+' | head -1)
           [ -n "$minio" ] && [ -n "$mc" ] || { echo "could not read versions"; exit 1; }
           echo "minio=$minio" >> "$GITHUB_OUTPUT"; echo "mc=$mc" >> "$GITHUB_OUTPUT"
-          echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "build=$(date -u +%Y%m%d).${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           echo "minio $minio, mc $mc"
       - name: smoke test
         run: |
           docker run -d --name smoke -e MINIO_ROOT_USER=smoketest -e MINIO_ROOT_PASSWORD=smoketest-password minio:test
           for i in $(seq 1 30); do docker exec smoke wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live && break; sleep 1; done
-          docker exec smoke sh -c 'mc alias set m http://127.0.0.1:9000 smoketest smoketest-password && mc mb m/smoke && mc ls m/ | grep -q smoke/'
+          docker exec -u 1000:1000 smoke sh -c 'mc alias set m http://127.0.0.1:9000 smoketest smoketest-password && mc mb m/smoke && mc ls m/ | grep -q smoke/'
           docker rm -f smoke
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # The dated tag is what a deployment pins: `latest` and the release tag move with every
-      # weekly rebuild, the dated one never does.
+      # The build tag (date and run number) is what a deployment pins: `latest` and the release
+      # tag move with every rebuild, the build tag never does - the run number keeps two builds
+      # on the same day apart.
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -50,7 +51,7 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.minio }}
-            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.minio }}-${{ steps.ver.outputs.date }}
+            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.minio }}-${{ steps.ver.outputs.build }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.description=MinIO ${{ steps.ver.outputs.minio }} and mc ${{ steps.ver.outputs.mc }} from Alpine's packages
