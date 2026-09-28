@@ -31,10 +31,10 @@ jobs:
           echo "minio $minio, mc $mc"
       - name: smoke test
         run: |
-          docker run -d --name t -e MINIO_ROOT_USER=smoketest -e MINIO_ROOT_PASSWORD=smoketest-password minio:test
-          for i in $(seq 1 30); do docker exec t wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live && break; sleep 1; done
-          docker exec t sh -c 'mc alias set m http://127.0.0.1:9000 smoketest smoketest-password && mc mb m/smoke && mc ls m/ | grep -q smoke/'
-          docker rm -f t
+          docker run -d --name smoke -e MINIO_ROOT_USER=smoketest -e MINIO_ROOT_PASSWORD=smoketest-password minio:test
+          for i in $(seq 1 30); do docker exec smoke wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live && break; sleep 1; done
+          docker exec smoke sh -c 'mc alias set m http://127.0.0.1:9000 smoketest smoketest-password && mc mb m/smoke && mc ls m/ | grep -q smoke/'
+          docker rm -f smoke
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
