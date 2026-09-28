@@ -1,0 +1,57 @@
+name: build
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '47 4 * * 1'      # weekly: pick up Alpine's MinIO and Go fixes
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Build for the runner first and prove the image works before anything is published:
+      # the server answers its health check, and mc (the symlink) can create and list a bucket.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: minio:test
+      - id: ver
+        run: |
+          minio=$(docker run --rm --entrypoint minio minio:test --version | grep -oE 'RELEASE\.[0-9TZ:-]+' | head -1)
+          mc=$(docker run --rm --entrypoint mc minio:test --version | grep -oE 'RELEASE\.[0-9TZ:-]+' | head -1)
+          [ -n "$minio" ] && [ -n "$mc" ] || { echo "could not read versions"; exit 1; }
+          echo "minio=$minio" >> "$GITHUB_OUTPUT"; echo "mc=$mc" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "minio $minio, mc $mc"
+      - name: smoke test
+        run: |
+          docker run -d --name t -e MINIO_ROOT_USER=smoketest -e MINIO_ROOT_PASSWORD=smoketest-password minio:test
+          for i in $(seq 1 30); do docker exec t wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live && break; sleep 1; done
+          docker exec t sh -c 'mc alias set m http://127.0.0.1:9000 smoketest smoketest-password && mc mb m/smoke && mc ls m/ | grep -q smoke/'
+          docker rm -f t
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The dated tag is what a deployment pins: `latest` and the release tag move with every
+      # weekly rebuild, the dated one never does.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.minio }}
+            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.minio }}-${{ steps.ver.outputs.date }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=MinIO ${{ steps.ver.outputs.minio }} and mc ${{ steps.ver.outputs.mc }} from Alpine's packages
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
